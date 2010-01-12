@@ -1,0 +1,90 @@
+#!/bin/sh
+#
+# ThinkPad: force correct charge sequence and go easy on the battery
+#
+# Usage: sudo batforce
+#  run anytime the power state changes (charging <-> discharging).
+# 
+# Batteries grow old, but more importantly, they grow tired after many
+# charge cycles, and the last 5% to top off the battery always takes longer and
+# is harder on the battery. Avoid charging beyond the 95th percentile.
+#
+# Also, if there are two batteries present, we want the 2nd (smallest) battery
+# to charge first and discharge last, since this is our "reserve tank".
+#
+#
+# COPYRIGHT 2009 - 2010 Kacper Wysocki <kwy@redpill-linpro.com>
+# v1 - limited release (closed beta)
+# Use by permission only. Killer tracking pigeons will be deployed.
+
+#set -x
+
+# start charging at %percentage
+BAT0_START_CHARGE=50
+# stop chraging at %percentage
+BAT0_STOP_CHARGE=95
+# bat1 if present is usually smaller
+BAT1_START_CHARGE=88
+BAT1_STOP_CHARGE=95
+
+# pipe into on-screen-display daemon, if present
+OSD="/tmp/osd.pipe"
+
+# gather output and print in the end
+OUTBUF=''
+output () {
+   OUTBUF="$OUTBUF $@"
+}
+
+output_end () {
+    echo "$OUTBUF"
+    if [ -p $OSD ]
+    then
+        echo "$OUTBUF" > $OSD
+    fi
+}
+
+tresholds () {
+   echo "setting BAT$1 charge parameters $2 $3"
+
+   [ `cat $s/BAT$1/start_charge_thresh` -lt $2 ] && 
+   echo $2 > $s/BAT$1/start_charge_thresh
+   [ `cat $s/BAT0/stop_charge_thresh` -gt $3 ] && 
+   echo $3 > $s/BAT$1/stop_charge_thresh
+}
+
+s=/sys/devices/platform/smapi
+if [ ! -d $s ] && ! modprobe tp-smapi
+   then
+   output "[!] tp-smapi module missing."
+   exit 1
+fi
+output "BAT0:`cat $s/BAT0/state` : `cat $s/BAT0/remaining_percent`%"
+if [ "`cat $s/BAT1/installed`" ]
+   then
+   output "BAT1:`cat $s/BAT1/state` : `cat $s/BAT1/remaining_percent`%"
+   if [ "`cat $s/ac_connected`" = "1" ]
+      then
+      echo 0 > $s/BAT0/force_discharge
+      echo 0 > $s/BAT1/force_discharge
+      if [ "`cat $s/BAT1/state`" != "charging" ]
+         then
+         if [ `cat $s/BAT1/remaining_percent`  -lt 88 ]
+            then
+            echo 2 > $s/BAT0/inhibit_charge_minutes
+            output "small battery charge first"
+         fi
+      fi
+   else
+      if [ `cat $s/BAT0/remaining_percent` -gt 5 -a `cat $s/BAT0/state` != 'discharging' ]
+      then
+         echo 1 > $s/BAT0/force_discharge
+         output "large battery forced discharge"
+      fi
+   fi
+   tresholds 1 $BAT1_START_CHARGE $BAT1_STOP_CHARGE
+fi
+#output "setting BAT0 charge parameters"
+tresholds 0 $BAT0_START_CHARGE $BAT0_STOP_CHARGE
+
+output_end
