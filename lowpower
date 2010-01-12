@@ -1,0 +1,166 @@
+#!/bin/sh
+#
+# COPYRIGHT 2009-09-15 Kacper Wysocki
+# Use by permission only. Killer tracking pigeons will be deployed.
+bat_state=/sys/devices/LNXSYSTM:00/device:00/PNP0A08:00/device:01/PNP0C09:00/PNP0C0A:00/power_supply/BAT0
+
+echo "[*] aggressively powersave harddisk"
+hdparm -B 1 -S 4 -W 1 /dev/sda
+#hdparm -B 1 -S 12 /dev/sda
+# don't.
+#hdparm -B 255 -S 0 /dev/sda
+
+echo "[*] don't write access time"
+mounts=`mount | grep sd | cut -f 1 -d' '`
+for fs in $mounts
+do
+   mount -o remount,noatime $fs
+done
+echo "[*] don't poll the CD for input."
+hal-disable-polling --device /dev/scd0
+
+echo "[#] Fun sysctl settings!"
+# Aye, this be a laptop. Flush dirties after IO.
+echo 5    > /proc/sys/vm/laptop_mode
+# Turn off swapping of this filthy bastard [60]
+echo 0    > /proc/sys/vm/swappiness
+# % of total memory pages when pdflush writes out dirty [5]
+#echo 15   > /proc/sys/vm/dirty_background_ratio
+echo  20   > /proc/sys/vm/dirty_background_ratio
+# flush dirty older than a minute.. in case of crash, lose 1 minute of work! [3000]
+echo 6000 > /proc/sys/vm/dirty_expire_centisecs
+# % of total memory when writing process will write out dirty [10]
+echo 20   > /proc/sys/vm/dirty_ratio
+# how often to pdflush - only when io! [1500]
+echo 0    > /proc/sys/vm/dirty_writeback_centisecs
+
+
+
+echo "[*] switch wifi to low-power"
+# nevermind autodetection... just try everything to see what works.
+echo 5 > /sys/bus/pci/drivers/iwl4965/*/power_level
+iwpriv eth1 set_power 6
+iwpriv wlan0 set_power 6
+
+#usb bluetooth
+#hciconfig hci0 down
+#rmmod hci_usb
+
+echo "[*] disable wake-on-lan"
+ethtool -s eth0 wol d
+
+echo "[*] turn off video outputs"
+xrandr --output VGA --off
+xrandr --output TMDS --off
+
+# disable a cpu core
+#echo 0 > /sys/devices/system/cpu/cpu1/online
+echo "[#] load one core above the other"
+echo 1 > /sys/devices/system/cpu/sched_mc_power_savings
+
+echo "[#] go radio silent"
+ echo 0 > /sys/devices/platform/thinkpad_acpi/bluetooth_enable
+ echo 0 > /sys/devices/platform/thinkpad_acpi/wwan_enable
+echo "[?] rfkill"
+ #for i in `find /sys -name "rf_kill" ; do echo 1 > $i ; done  
+
+echo "[!] kill xcompmgr... more code is a power hog"
+killall xcompmgr
+
+# or /proc/acpi/video/VID/LCD0/brightness
+echo "[*] set brightness"
+echo 1 > /sys/class/backlight/acpi_video0/brightness
+
+echo "[!]# dont sync noncritical syslogs"
+# Remember RAMRUN and RAMLOCK in /etc/default/rcS
+echo "[*] log to tmpfs"
+if ! mount | grep -q oldlog
+then
+    mkdir -p /var/oldlog
+    mount -o bind /var/log /var/oldlog
+    mount -t tmpfs none /var/log
+fi
+# when varlog is mounted tmpfs, we need some dirs
+for dir in apt wicd cups dnscache news exim4 wifsck samba samba/cores installer gdm icecast2 libvirt libvirt/qemu mgetty postgresql stunnel4 clamav
+do
+	mkdir -p /var/log/$dir
+done
+for logger in rsyslog sysklogd syslogd syslog
+do
+    if [ -x /etc/init.d/$logger ]
+    then
+        /etc/init.d/$logger restart
+    fi
+done
+
+SERVICES='varnish varnishlog varnishncsa nagios-nrpe-server gkrellmd icecast exim4 vdr uml-utilities slapd apache2 samba open-iscsi cups avahi-daemon sancp smstools'
+
+echo "[*] stop services"
+for service in $SERVICES
+do
+   /etc/init.d/$service stop
+done
+echo "[*] disable services"
+for service in $SERVICES
+do
+   update-rc.d -f $service remove
+done
+
+if [ -d /sys/devices/platform/smapi ]
+then
+   if [ "`cat /sys/devices/platform/smapi/ac_connected`" = "0" ]
+   then
+      if [ "`cat /sys/devices/platform/smapi/BAT1/state`" != "none" ]
+      then
+      echo "[@] two batteries: force discharge large battery first"
+         if [ "`cat /sys/devices/platform/smapi/BAT0/remaining_percent`" -gt "5" ]
+            then
+            echo 1 > /sys/devices/platform/smapi/BAT0/force_discharge
+            echo "[*] forced BAT0 discharge"
+         else
+            echo "[!] not enough charge on BAT0"
+         fi
+      else
+         echo "[!] no second battery"
+      fi
+   fi
+fi
+
+
+# Handle Intel HDA Power Save (laptop-mode-tools)
+if [ -w /sys/module/snd_hda_intel/parameters/power_save ]
+   then
+   INTEL_HDA_DEVICE_TIMEOUT=10
+   echo $INTEL_HDA_DEVICE_TIMEOUT > /sys/module/snd_hda_intel/parameters/power_save
+   echo "Intel HDA power save mode enabled with timeout $INTEL_HDA_DEVICE_TIMEOUT."
+   if [ -c /dev/dsp ]
+      then
+      # This can fail if the audio device is busy.
+      # Since this failure is non-fatal (worst case is that the timer changes
+      # don't get activated), we don't bother if it was successful or not
+      #(exec 2>/dev/null; echo 1 > /dev/dsp;)
+      # Better way
+      echo 1 2>/dev/null >/dev/dsp
+      echo "Initialize timer change by close/open /dev/dsp"
+   fi
+else
+   echo "Intel HDA power saving is not available on this system."
+fi
+if [ -w /sys/module/snd_hda_intel/parameters/power_save_controller ]
+   then
+   echo Y > /sys/module/snd_hda_intel/parameters/power_save_controller
+   echo "Intel HDA Controller power save set"
+else
+   echo "Sound Card doesn't support controller power save"
+fi
+
+# Intel SATA link-level power management (l-m-t)
+for POLICYFILE in /sys/class/scsi_host/*/link_power_management_policy ; do
+	if [ -f $POLICYFILE ] ; then
+		echo "Intel SATA link power saving enabled."
+		echo min_power > $POLICYFILE
+	else
+		echo "Intel SATA link power saving enabled but not supported by system."
+	fi 
+done
+
