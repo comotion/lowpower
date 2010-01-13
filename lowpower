@@ -23,6 +23,14 @@ disable_services() {
     echo "."
 }
 
+echo "lowpower: agressive powersaving script. kacperw@gmail.com 2009"
+echo "  This script WILL auto-disable services. Read the script to see what's going on."
+if [ $UID -ne 0 ]
+    then
+    echo "[!] must run as root"
+    exit 99
+fi
+
 echo "[*] aggressively powersave harddisk"
 hdparm -B 1 -S 4 -W 1 /dev/sda
 #hdparm -B 1 -S 12 /dev/sda
