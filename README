@@ -2,4 +2,36 @@ lowpower - minimise system power usage
 
 intented to be run once before a long stint on battery power
 
+This is a knife, and it cuts these things:
+  - stops and disables (several) services
+  - agressively powersaves harddisks
+  - remounts everything noatime
+  - sets magic sysctls to reduce swapping and dirty writeouts
+  - switches wlan0, eth1 (wifi) and eth0 (lan)to lowpower
+  - disables extraneous video card outputs
+  - loads one cpu core to avoid waking the other
+  - sets the brightness to lowest
+  - mounts /var/log on tmpfs
+  - forces discharge of large battery first
+  - intel HDA powersaving
+  - SATA link-level powermanagement
+  - kills xcompmgr.
+
+This knife does NOT:
+ - do any autosensing / error handling. We blindly employ every single 
+ technique we know of to reduce power, and we care naught if you don't have
+ that particular device.
+ - set usb autosuspend
+ - disable blinking cursors and other powerhog bling
+ - go radio silent. unless you uncomment that stuff.
+ - tell you how much you save. Try the references below for that.
+
+ kwy recommends *always* measure power usage to detect patterns.
+
+Bug reports and new ways to reduce power consumptions are welcome!
+
+References: powertop, gnome-power-manager, kpowersave, http://lesswats.org
+
+http://kacper.blog.linpro.no/archives/13
+
 Copyright Kacper Wysocki kacperw@gmail.com 2009-2010
