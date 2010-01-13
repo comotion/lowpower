@@ -4,6 +4,25 @@
 # Use by permission only. Killer tracking pigeons will be deployed.
 bat_state=/sys/devices/LNXSYSTM:00/device:00/PNP0A08:00/device:01/PNP0C09:00/PNP0C0A:00/power_supply/BAT0
 
+disable_services() {
+    SERVICES='varnish varnishlog varnishncsa nagios-nrpe-server gkrellmd icecast exim4 vdr uml-utilities slapd apache2 samba open-iscsi cups avahi-daemon sancp smstools'
+
+    echo "[*] stop services"
+    for service in $SERVICES
+    do
+       echo -n "$service "
+       /etc/init.d/$service stop 2>/dev/null
+    done
+    echo "."
+    echo "[*] disable services"
+    for service in $SERVICES
+    do
+       echo -n "$service "
+       update-rc.d -f $service remove
+    done
+    echo "."
+}
+
 echo "[*] aggressively powersave harddisk"
 hdparm -B 1 -S 4 -W 1 /dev/sda
 #hdparm -B 1 -S 12 /dev/sda
@@ -93,18 +112,7 @@ do
     fi
 done
 
-SERVICES='varnish varnishlog varnishncsa nagios-nrpe-server gkrellmd icecast exim4 vdr uml-utilities slapd apache2 samba open-iscsi cups avahi-daemon sancp smstools'
-
-echo "[*] stop services"
-for service in $SERVICES
-do
-   /etc/init.d/$service stop
-done
-echo "[*] disable services"
-for service in $SERVICES
-do
-   update-rc.d -f $service remove
-done
+disable_services
 
 if [ -d /sys/devices/platform/smapi ]
 then

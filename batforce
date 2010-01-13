@@ -19,10 +19,16 @@
 
 #set -x
 
+# run on bat0 until it's below %percentage
+BAT0_MIN_CHARGE=5
+# inhibit battery for x minutes to let the other battery charge
+BAT0_INHIBIT_MINUTES=3
+
 # start charging at %percentage
 BAT0_START_CHARGE=50
 # stop chraging at %percentage
 BAT0_STOP_CHARGE=95
+
 # bat1 if present is usually smaller
 BAT1_START_CHARGE=88
 BAT1_STOP_CHARGE=95
@@ -54,13 +60,13 @@ tresholds () {
 }
 
 s=/sys/devices/platform/smapi
-if [ ! -d $s ] && ! modprobe tp-smapi
+if [ ! -d "$s" ] && ! modprobe tp-smapi
    then
    output "[!] tp-smapi module missing."
    exit 1
 fi
 output "BAT0:`cat $s/BAT0/state` : `cat $s/BAT0/remaining_percent`%"
-if [ "`cat $s/BAT1/installed`" ]
+if [ "`cat $s/BAT1/installed`" = "1" ]
    then
    output "BAT1:`cat $s/BAT1/state` : `cat $s/BAT1/remaining_percent`%"
    if [ "`cat $s/ac_connected`" = "1" ]
@@ -69,14 +75,14 @@ if [ "`cat $s/BAT1/installed`" ]
       echo 0 > $s/BAT1/force_discharge
       if [ "`cat $s/BAT1/state`" != "charging" ]
          then
-         if [ `cat $s/BAT1/remaining_percent`  -lt 88 ]
+         if [ `cat $s/BAT1/remaining_percent`  -lt $BAT1_START_CHARGE ]
             then
-            echo 2 > $s/BAT0/inhibit_charge_minutes
+            echo $BAT0_INHIBIT_MINUTES > $s/BAT0/inhibit_charge_minutes
             output "small battery charge first"
          fi
       fi
    else
-      if [ `cat $s/BAT0/remaining_percent` -gt 5 -a `cat $s/BAT0/state` != 'discharging' ]
+      if [ `cat $s/BAT0/remaining_percent` -gt $BAT0_MIN_CHARGE -a `cat $s/BAT0/state` != 'discharging' ]
       then
          echo 1 > $s/BAT0/force_discharge
          output "large battery forced discharge"
