@@ -21,9 +21,12 @@ This knife does NOT:
  - do any autosensing / error handling. We blindly employ every single 
  technique we know of to reduce power, and we care naught if you don't have
  that particular device.
+ - go radio silent. unless you uncomment that stuff.
  - set usb autosuspend
  - disable blinking cursors and other powerhog bling
- - go radio silent. unless you uncomment that stuff.
+ - check pidstat -d 10 to see what's waking up your harddisk, and kill the
+ process or mount the location readonly
+ - play your music and videos from tmpfs
  - tell you how much you save. Try the references below for that.
 
  kwy recommends *always* measure power usage to detect patterns.
