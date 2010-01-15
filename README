@@ -16,20 +16,27 @@ This is a knife, and it cuts these things:
   - intel HDA powersaving
   - SATA link-level powermanagement
   - kills xcompmgr.
+  - usb autosuspend
+  - disables syslog sync() for noncritical logs
+  - checks power clamping
 
 This knife does NOT:
  - do any autosensing / error handling. We blindly employ every single 
  technique we know of to reduce power, and we care naught if you don't have
  that particular device.
- - go radio silent. unless you uncomment that stuff.
- - set usb autosuspend
- - disable blinking cursors and other powerhog bling
- - check pidstat -d 10 to see what's waking up your harddisk, and kill the
+ - go completely radio silent with rfkill, unless you uncomment that stuff.
+- check pidstat -d 10 to see what's waking up your harddisk, and kill the
  process or mount the location readonly
  - play your music and videos from tmpfs
- - tell you how much you save. Try the references below for that.
+ - disable blinking cursors and other powerhog bling
+ --> for vim, this is:
+ 
+" don't wake up cpu by blinking
+let &guicursor = &guicursor . ",a:blinkon0"
 
- kwy recommends *always* measure power usage to detect patterns.
+ - tell you how much power you save. Try the references below for that.
+
+kwy recommends *always* measure power usage to detect patterns.
 
 Bug reports and new ways to reduce power consumptions are welcome!
 
@@ -38,3 +45,44 @@ References: powertop, gnome-power-manager, kpowersave, http://lesswats.org
 http://kacper.blog.linpro.no/archives/13
 
 Copyright Kacper Wysocki kacperw@gmail.com 2009-2010
+
+-=- some numbers (http://pavelmachek.livejournal.com/61014.html)
+thinkpad x60 [75Wh]
+~~~~~~~~~~~~                                            
+init=/bin/bash (HZ=250)                 14   W
+disable USB and sound:                  -3.6 W
+
+
+..the list goes on with:
+
+idle machine:                           +0.2 W
+intel console                           +0.4 W
+idle machine, min bl, intel console:    14.6 W
+HZ=250, no usb/sound:                   11.0 W
+HZ=100, no usb/sound:                   -0.3 W (?)
+HZ=1000, no usb/sound:                  +0.2 W (?)
+bluetooth enabled + ipw on:             +1.4 W
+bluetooth enabled:                      +0.1 W
+max bl:                                 +2.1 W (?) + 3 W (when max enabled in bios?)
+no bl:                                  -0.9 W
+ethernet cable inserted + ifconfig up:  +0.4 W
+kernel build (one cpu):                 +19  W
+kernel build (two cpus):                +28  W
+lower refresh rate (60Hz -> 43Hz)       -0.05W
+vga=1 ...                               -0.5 W or so
+SVGATextMode 40x12x8                    -0.2 W (additional)
+white background instead of black       -0.05W
+Xwindows                                +0.1 W (+0.3W?)
+Xwindows, 8bit depth                    -0.15W
+Xwindows, 8bit depth, 640x480           -0.35W
+hdd spindown                            -0.5 W (?)
+sound off (echo -n 2 > power/state)     -0.3 W
+cardbus bridge off                      -0.03W (?)
+firewire off                            -0.00W (?)
+mmc off                                 -0.00W (?)
+e1000 off                               -0.00W (and driver confused?)
+ide controller off                      -0.01W
+smbus controller off:                   -0.00W
+SATA controller off:                    -1W (and machine dies)
+docking station                         +1W
+fan:                                    +0.3W (!)
