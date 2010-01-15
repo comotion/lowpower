@@ -144,7 +144,6 @@ low_brightness() {
     abright=/proc/acpi/video/VID/LCD0/brightness
     if [ -f $abright ]
         then
-        set -x
         level=$(($BRIGHTNESS_LEVEL+1))
         echo `cat $abright | awk "/level/ { print \\\$$level }"` > $abright
     fi
@@ -296,7 +295,7 @@ usb_autosuspend() {
     echo "[*] USB autosuspend"
     for i in `find /sys -name autosuspend -exec echo {} \;`
     do
-        echo 1 > $i
+        echo 2 > $i
     done
 }
 
@@ -320,6 +319,17 @@ syslog_nosync() {
     echo ". syncing disabled"
 }
 
+check_intelvga() {
+    if [ -n "`lsmod | grep intel_agp`" ]
+        then
+        echo "[!] You have intel vga. Try enabling FramebufferCompression:"
+        echo 'Section "Device"'
+        echo '  Driver "intel"'
+        echo '  Option "FramebufferCompression" "on"'
+        echo '  # etc'
+        echo 'EndSection'
+    fi
+}
 
 args_execed=
 for arg in $@
