@@ -2,10 +2,12 @@
 #
 # COPYRIGHT 2009-09-15 Kacper Wysocki
 # Use by permission only. Killer tracking pigeons will be deployed.
+
+BRIGHTNESS_LEVEL=2
 bat_state=/sys/devices/LNXSYSTM:00/device:00/PNP0A08:00/device:01/PNP0C09:00/PNP0C0A:00/power_supply/BAT0
 
 disable_services() {
-    SERVICES='varnish varnishlog varnishncsa nagios-nrpe-server gkrellmd icecast exim4 vdr uml-utilities slapd apache2 samba open-iscsi cups avahi-daemon sancp smstools'
+    SERVICES='varnish varnishlog varnishncsa nagios-nrpe-server gkrellmd icecast exim4 vdr uml-utilities slapd apache2 samba open-iscsi cups avahi-daemon sancp smstools mysql'
 
     echo "[*] stop services"
     for service in $SERVICES
@@ -18,7 +20,7 @@ disable_services() {
     for service in $SERVICES
     do
        echo -n "$service "
-       update-rc.d -f $service remove
+       update-rc.d -f $service remove > /dev/null
     done
     echo "."
 }
@@ -31,152 +33,330 @@ if [ $UID -ne 0 ]
     exit 99
 fi
 
-echo "[*] aggressively powersave harddisk"
-hdparm -B 1 -S 4 -W 1 /dev/sda
-#hdparm -B 1 -S 12 /dev/sda
-# don't.
-#hdparm -B 255 -S 0 /dev/sda
+powersave_harddisk() {
+    echo "[*] aggressively powersave harddisk"
+    hdparm -B 1 -S 4 -W 1 /dev/sda
+    #hdparm -B 1 -S 12 /dev/sda
+}
 
-echo "[*] don't write access time"
-mounts=`mount | grep sd | cut -f 1 -d' '`
-for fs in $mounts
-do
-   mount -o remount,noatime $fs
-done
-echo "[*] don't poll the CD for input."
-hal-disable-polling --device /dev/scd0
-
-echo "[#] Fun sysctl settings!"
-# Aye, this be a laptop. Flush dirties after IO.
-echo 5    > /proc/sys/vm/laptop_mode
-# Turn off swapping of this filthy bastard [60]
-echo 0    > /proc/sys/vm/swappiness
-# % of total memory pages when pdflush writes out dirty [5]
-#echo 15   > /proc/sys/vm/dirty_background_ratio
-echo  20   > /proc/sys/vm/dirty_background_ratio
-# flush dirty older than a minute.. in case of crash, lose 1 minute of work! [3000]
-echo 6000 > /proc/sys/vm/dirty_expire_centisecs
-# % of total memory when writing process will write out dirty [10]
-echo 20   > /proc/sys/vm/dirty_ratio
-# how often to pdflush - only when io! [1500]
-echo 0    > /proc/sys/vm/dirty_writeback_centisecs
+powerhog_harddisk() {
+    hdparm -B 255 -S 0 /dev/sda
+}
 
 
+noatime_mounts() {
+    echo "[*] don't write access time"
+    mounts=`mount | grep sd | cut -f 1 -d' '`
+    for fs in $mounts
+    do
+       mount -o remount,noatime $fs
+    done
+}
+sysctl_dirties() {
+    echo "[#] Fun sysctl settings!"
+    # Aye, this be a laptop. Flush dirties after IO.
+    echo 5    > /proc/sys/vm/laptop_mode
+    # Turn off swapping of this filthy bastard [60]
+    echo 0    > /proc/sys/vm/swappiness
+    # % of total memory pages when pdflush writes out dirty [5]
+    #echo 15   > /proc/sys/vm/dirty_background_ratio
+    echo  20   > /proc/sys/vm/dirty_background_ratio
+    # flush dirty older than a minute.. in case of crash, lose 1 minute of work! [3000]
+    echo 6000 > /proc/sys/vm/dirty_expire_centisecs
+    # % of total memory when writing process will write out dirty [10]
+    echo 20   > /proc/sys/vm/dirty_ratio
+    # how often to pdflush - only when io! [1500]
+    echo 0    > /proc/sys/vm/dirty_writeback_centisecs
+}
 
-echo "[*] switch wifi to low-power"
-# nevermind autodetection... just try everything to see what works.
-echo 5 > /sys/bus/pci/drivers/iwl4965/*/power_level
-iwpriv eth1 set_power 6
-iwpriv wlan0 set_power 6
+disable_polling() {
+    echo "[*] don't poll the CD for input."
+    hal-disable-polling --device /dev/scd0
+}
 
-#usb bluetooth
-#hciconfig hci0 down
-#rmmod hci_usb
+lowpower_wifi() {
+    echo "[*] switch wifi to low-power"
+    # nevermind autodetection... just try everything to see what works.
+    echo 5 > /sys/bus/pci/drivers/iwl4965/*/power_level
+    iwpriv eth1 set_power 6
+    iwpriv wlan0 set_power 6
+}
 
-echo "[*] disable wake-on-lan"
-ethtool -s eth0 wol d
+kill_bluetoth() {
+    usb bluetooth
+    hciconfig hci0 down
+    rmmod hci_usb
+}
 
-echo "[*] turn off video outputs"
-xrandr --output VGA --off
-xrandr --output TMDS --off
+thinkpad_radiosilence() {
+    echo "[#] go radio silent (bluetooth & 3g)"
+    echo 0 > /sys/devices/platform/thinkpad_acpi/bluetooth_enable
+    echo 0 > /sys/devices/platform/thinkpad_acpi/wwan_enable
+}
+rfkill_all() {
+    echo "[?] rfkill"
+    for i in `find /sys -name "rf_kill"`; do echo 1 > $i ; done  
+}
 
-# disable a cpu core
-#echo 0 > /sys/devices/system/cpu/cpu1/online
-echo "[#] load one core above the other"
-echo 1 > /sys/devices/system/cpu/sched_mc_power_savings
+no_wol() {
+    echo "[*] disable wake-on-lan"
+    ethtool -s eth0 wol d
+}
 
-echo "[#] go radio silent"
- echo 0 > /sys/devices/platform/thinkpad_acpi/bluetooth_enable
- echo 0 > /sys/devices/platform/thinkpad_acpi/wwan_enable
-echo "[?] rfkill"
- #for i in `find /sys -name "rf_kill" ; do echo 1 > $i ; done  
-
-echo "[!] kill xcompmgr... more code is a power hog"
-killall xcompmgr
-
-# or /proc/acpi/video/VID/LCD0/brightness
-echo "[*] set brightness"
-echo 1 > /sys/class/backlight/acpi_video0/brightness
-
-echo "[!]# dont sync noncritical syslogs"
-# Remember RAMRUN and RAMLOCK in /etc/default/rcS
-echo "[*] log to tmpfs"
-if ! mount | grep -q oldlog
-then
-    mkdir -p /var/oldlog
-    mount -o bind /var/log /var/oldlog
-    mount -t tmpfs none /var/log
-fi
-# when varlog is mounted tmpfs, we need some dirs
-for dir in apt wicd cups dnscache news exim4 wifsck samba samba/cores installer gdm icecast2 libvirt libvirt/qemu mgetty postgresql stunnel4 clamav
-do
-	mkdir -p /var/log/$dir
-done
-for logger in rsyslog sysklogd syslogd syslog
-do
-    if [ -x /etc/init.d/$logger ]
-    then
-        /etc/init.d/$logger restart
+down_on_nolink() {
+    eth=eth0
+    link=`ethtool $eth | awk '/Link detected:/ { print $NF }'`
+    if [ "$link" = "no" ]
+        then
+        echo "[*] no link, downing $eth"
+        ifconfig $eth down
+    else
+        echo "[*] got link on $eth"
     fi
+}
+
+
+
+no_videout() {
+    echo "[*] turn off video outputs"
+    xrandr --output VGA --off
+    xrandr --output TMDS --off
+}
+
+disable_core() {
+    echo 0 > /sys/devices/system/cpu/cpu1/online
+}
+
+prefer_core() {
+    echo "[#] load one core above the other"
+    echo 1 > /sys/devices/system/cpu/sched_mc_power_savings
+}
+
+kill_xcompmgr() {
+    echo "[!] kill xcompmgr... more code is a power hog"
+    killall xcompmgr
+}
+
+low_brightness() {
+    # two ways to set brightness
+    echo "[*] set brightness"
+    echo $BRIGHTNESS_LEVEL > /sys/class/backlight/acpi_video0/brightness
+    abright=/proc/acpi/video/VID/LCD0/brightness
+    if [ -f $abright ]
+        then
+        set -x
+        level=$(($BRIGHTNESS_LEVEL+1))
+        echo `cat $abright | awk "/level/ { print \\\$$level }"` > $abright
+    fi
+}
+
+log_to_tmpfs() {
+    # Remember RAMRUN and RAMLOCK in /etc/default/rcS
+    echo "[*] log to tmpfs"
+    if ! mount | grep -q oldlog
+    then
+        mkdir -p /var/oldlog
+        mount -o bind /var/log /var/oldlog
+        mount -t tmpfs none /var/log
+    fi
+
+    # when varlog is mounted tmpfs, we need some dirs
+    for dir in apt wicd cups dnscache news exim4 wifsck samba samba/cores installer gdm icecast2 libvirt libvirt/qemu mgetty postgresql stunnel4 clamav
+    do
+        mkdir -p /var/log/$dir
+    done
+    for logger in rsyslog sysklogd syslogd syslog
+    do
+        if [ -x /etc/init.d/$logger ]
+        then
+            /etc/init.d/$logger restart
+        fi
+    done
+}
+
+smart_discharge() {
+    if [ -d /sys/devices/platform/smapi ]
+    then
+       if [ "`cat /sys/devices/platform/smapi/ac_connected`" = "0" ]
+       then
+          if [ "`cat /sys/devices/platform/smapi/BAT1/state`" != "none" ]
+          then
+          echo "[@] two batteries: force discharge large battery first"
+             if [ "`cat /sys/devices/platform/smapi/BAT0/remaining_percent`" -gt "5" ]
+                then
+                echo 1 > /sys/devices/platform/smapi/BAT0/force_discharge
+                echo "[*] forced BAT0 discharge"
+             else
+                echo "[!] not enough charge on BAT0"
+             fi
+          else
+             echo "[!] no second battery"
+          fi
+       fi
+    fi
+}
+
+lowpower_intelhdasound() {
+    # Handle Intel HDA Power Save (laptop-mode-tools)
+    if [ -w /sys/module/snd_hda_intel/parameters/power_save ]
+       then
+       INTEL_HDA_DEVICE_TIMEOUT=10
+       echo $INTEL_HDA_DEVICE_TIMEOUT > /sys/module/snd_hda_intel/parameters/power_save
+       echo "Intel HDA power save mode enabled with timeout $INTEL_HDA_DEVICE_TIMEOUT."
+       if [ -c /dev/dsp ]
+          then
+          # This can fail if the audio device is busy.
+          # Since this failure is non-fatal (worst case is that the timer changes
+          # don't get activated), we don't bother if it was successful or not
+          #(exec 2>/dev/null; echo 1 > /dev/dsp;)
+          # Better way
+          #echo "Initialize timer change by close/open /dev/dsp"
+          echo 1 2>/dev/null >/dev/dsp
+       fi
+    else
+       echo "Intel HDA power saving is not available on this system."
+    fi
+    if [ -w /sys/module/snd_hda_intel/parameters/power_save_controller ]
+       then
+       echo Y > /sys/module/snd_hda_intel/parameters/power_save_controller
+       echo "Intel HDA Controller power save set"
+    else
+       echo "Sound Card doesn't support controller power save"
+    fi
+}
+
+lowpower_intelsata() {
+    # Intel SATA link-level power management (l-m-t)
+    echo -n "Intel SATA link power saving: "
+    SET="nope"
+    for POLICYFILE in /sys/class/scsi_host/*/link_power_management_policy ; do
+        if [ -f $POLICYFILE ] ; then
+            echo min_power > $POLICYFILE
+            SET="yes"
+        fi 
+    done
+    echo $SET
+}
+
+
+recheck_cpufreq() {
+    # some systems are weirdly clamped. unclamp
+    C=/sys/devices/system/cpu
+    cpus=`cat $C/online | sed 's/-/ /g'`
+
+    for n in `seq $cpus`
+    do
+        # check dynamic range
+        cfreq=$C/cpu$n/cpufreq
+        govn=`cat $cfreq/scaling_governor`
+        echo "[*] cpu$n governor: $govn"
+        govn_avail=`cat $cfreq/scaling_available_governors`
+        if [ "$govn" != "ondemand" -a "$govn" != "userspace" ]
+            then
+            echo "[*] governor $govn -> ondemand"
+            echo ondemand > $cfreq/scaling_governor
+        fi
+        
+        freq_avail=`cat $cfreq/scaling_available_frequencies`
+
+        freq_max=`echo $freq_avail | awk '{ print $1 }'`
+        freq_min=`echo $freq_avail | awk '{ print $NF }'`
+        echo "[*] cpu$n frequency range: $freq_min - $freq_max"
+        cur_min=`cat $cfreq/scaling_min_freq`
+        cur_max=`cat $cfreq/scaling_max_freq`
+        if [ $freq_min -lt $cur_min ]
+            then
+            echo "[*] cpu clamped below at $cur_min. Resetting to $freq_min."
+            echo $freq_min > $cfreq/scaling_min_freq
+        fi
+        if [ $freq_max -lt $cur_max ]
+            then
+            echo "[*] cpu clamped above at $cur_max. Resetting to $freq_max."
+            echo $freq_max > $cfreq/scaling_max_freq
+        fi
+    done
+}
+
+check_irqbalance() {
+    cpus=`cat $C/present | sed 's/-/ /g'`
+    if [ "$cpus" = "0" ]
+    then
+        echo "[*] Only one core, no need for irqbalance"
+        return
+    fi
+    if [ ! grep -q 'ENABLED=1' /etc/default/irqbalance ]
+        then
+        echo "[!] You should enable the irqbalance daemon for power and performance!"
+    else
+        echo "[*] Got irqbalance. Good."
+    fi
+}
+
+usb_autosuspend() {
+    echo "[*] USB autosuspend"
+    for i in `find /sys -name autosuspend -exec echo {} \;`
+    do
+        echo 1 > $i
+    done
+}
+
+syslog_nosync() {
+    conf=/etc/syslog.conf
+    echo "[*] dont sync noncritical syslogs"
+    if [ ! -f $conf ]
+        then
+        conf=/etc/rsyslog.conf
+    fi
+    if [ ! -f $conf ]
+        then
+        echo "[!] can't find syslog conf"
+    fi
+    logs='/var/log/syslog /var/log/daemon.log /var/log/kern.log /var/log/lpr.log /var/log/mail.log /var/log/user.log /var/log/mail.info /var/log/mail.warn /var/log/news/news.notice /var/log/debug /var/log/messages /var/log/libvirt.log'
+    for log in $logs
+    do
+        echo -n "$log "
+        sed -i "s#\(\s\)\($log\)#\1-\2#" $conf
+    done
+    echo ". syncing disabled"
+}
+
+
+args_execed=
+for arg in $@
+do
+    echo "[*] Sure, I'll try command $arg.."
+    $arg
+    args_execed="$args_execed $arg"
 done
+if [ -n "$args_execed" ]
+    then
+    exit 0
+fi
 
 disable_services
+recheck_cpufreq
+log_to_tmpfs
+low_brightness
+disable_polling
+powersave_harddisk
+noatime_mounts
+sysctl_dirties
+lowpower_wifi
+thinkpad_radiosilence
+no_wol
+down_on_nolink
+no_videout
+prefer_core
+kill_xcompmgr
+smart_discharge
+lowpower_intelsata
+lowpower_intelhdasound
+usb_autosuspend
 
-if [ -d /sys/devices/platform/smapi ]
-then
-   if [ "`cat /sys/devices/platform/smapi/ac_connected`" = "0" ]
-   then
-      if [ "`cat /sys/devices/platform/smapi/BAT1/state`" != "none" ]
-      then
-      echo "[@] two batteries: force discharge large battery first"
-         if [ "`cat /sys/devices/platform/smapi/BAT0/remaining_percent`" -gt "5" ]
-            then
-            echo 1 > /sys/devices/platform/smapi/BAT0/force_discharge
-            echo "[*] forced BAT0 discharge"
-         else
-            echo "[!] not enough charge on BAT0"
-         fi
-      else
-         echo "[!] no second battery"
-      fi
-   fi
-fi
+echo
+echo "[***] lowpower done"
 
 
-# Handle Intel HDA Power Save (laptop-mode-tools)
-if [ -w /sys/module/snd_hda_intel/parameters/power_save ]
-   then
-   INTEL_HDA_DEVICE_TIMEOUT=10
-   echo $INTEL_HDA_DEVICE_TIMEOUT > /sys/module/snd_hda_intel/parameters/power_save
-   echo "Intel HDA power save mode enabled with timeout $INTEL_HDA_DEVICE_TIMEOUT."
-   if [ -c /dev/dsp ]
-      then
-      # This can fail if the audio device is busy.
-      # Since this failure is non-fatal (worst case is that the timer changes
-      # don't get activated), we don't bother if it was successful or not
-      #(exec 2>/dev/null; echo 1 > /dev/dsp;)
-      # Better way
-      echo 1 2>/dev/null >/dev/dsp
-      echo "Initialize timer change by close/open /dev/dsp"
-   fi
-else
-   echo "Intel HDA power saving is not available on this system."
-fi
-if [ -w /sys/module/snd_hda_intel/parameters/power_save_controller ]
-   then
-   echo Y > /sys/module/snd_hda_intel/parameters/power_save_controller
-   echo "Intel HDA Controller power save set"
-else
-   echo "Sound Card doesn't support controller power save"
-fi
 
-# Intel SATA link-level power management (l-m-t)
-for POLICYFILE in /sys/class/scsi_host/*/link_power_management_policy ; do
-	if [ -f $POLICYFILE ] ; then
-		echo "Intel SATA link power saving enabled."
-		echo min_power > $POLICYFILE
-	else
-		echo "Intel SATA link power saving enabled but not supported by system."
-	fi 
-done
+
 
