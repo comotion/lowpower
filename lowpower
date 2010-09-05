@@ -343,7 +343,7 @@ if [ -n "$args_execed" ]
     exit 0
 fi
 
-disable_services
+#disable_services
 recheck_cpufreq
 log_to_tmpfs
 low_brightness
