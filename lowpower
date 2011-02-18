@@ -7,7 +7,7 @@ BRIGHTNESS_LEVEL=2
 bat_state=/sys/devices/LNXSYSTM:00/device:00/PNP0A08:00/device:01/PNP0C09:00/PNP0C0A:00/power_supply/BAT0
 
 disable_services() {
-    SERVICES='varnish varnishlog varnishncsa nagios-nrpe-server gkrellmd icecast exim4 vdr uml-utilities slapd apache2 samba open-iscsi cups avahi-daemon sancp smstools mysql'
+    SERVICES='varnish varnishlog varnishncsa nagios-nrpe-server gkrellmd icecast exim4 vdr uml-utilities slapd apache2 samba open-iscsi cups avahi-daemon sancp smstools mysql lighttpd autofs'
 
     echo "[*] stop services"
     for service in $SERVICES
@@ -66,7 +66,7 @@ sysctl_dirties() {
     # % of total memory when writing process will write out dirty [10]
     echo 20   > /proc/sys/vm/dirty_ratio
     # how often to pdflush - only when io! [1500]
-    echo 0    > /proc/sys/vm/dirty_writeback_centisecs
+    echo 15000    > /proc/sys/vm/dirty_writeback_centisecs
 }
 
 disable_polling() {
@@ -98,6 +98,26 @@ rfkill_all() {
     for i in `find /sys -name "rf_kill"`; do echo 1 > $i ; done  
 }
 
+rfkill_wlan() {
+    state=$1
+    if [ -z $state ]
+        then
+        state=0
+    fi
+    echo "[*] wlan kill"
+    for i in `find /sys/class/rfkill`
+    do
+        echo $i
+        cat $i/uevent
+        if grep RFKILL_TYPE=wlan $i/uevent
+            then
+            echo $state > $i/state
+        fi
+    done
+}
+
+
+
 no_wol() {
     echo "[*] disable wake-on-lan"
     ethtool -s eth0 wol d
@@ -119,7 +139,7 @@ down_on_nolink() {
 
 no_videout() {
     echo "[*] turn off video outputs"
-    xrandr --output VGA --off
+    xrandr --output VGA1 --off
     xrandr --output TMDS --off
 }
 
