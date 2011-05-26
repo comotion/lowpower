@@ -6,6 +6,16 @@
 BRIGHTNESS_LEVEL=2
 bat_state=/sys/devices/LNXSYSTM:00/device:00/PNP0A08:00/device:01/PNP0C09:00/PNP0C0A:00/power_supply/BAT0
 
+help() {
+    functions=`cat $0 | grep '() {' | grep -v grep | sed 's/() {$//'`
+    echo
+    echo "Usage: $0 {command}"
+    echo "  Where {command} may be one or more of the following:"
+    echo
+    echo $functions
+    echo
+}
+
 disable_services() {
     SERVICES='varnish varnishlog varnishncsa nagios-nrpe-server gkrellmd icecast exim4 vdr uml-utilities slapd apache2 samba open-iscsi cups avahi-daemon sancp smstools mysql lighttpd autofs'
 
@@ -24,14 +34,6 @@ disable_services() {
     done
     echo "."
 }
-
-echo "lowpower: agressive powersaving script. kacperw@gmail.com 2009"
-echo "  This script WILL auto-disable services. Read the script to see what's going on."
-if [ $UID -ne 0 ]
-    then
-    echo "[!] must run as root"
-    exit 99
-fi
 
 powersave_harddisk() {
     echo "[*] aggressively powersave harddisk"
@@ -106,17 +108,20 @@ rfkill_wlan() {
         state=0
     fi
     echo "[*] wlan kill"
-    for i in `find /sys/class/rfkill`
+    for i in `find /sys/class/rfkill -mindepth 1`
     do
-        echo $i
-        cat $i/uevent
-        if grep RFKILL_TYPE=wlan $i/uevent
+        if grep -q RFKILL_TYPE=wlan $i/uevent
             then
             echo $state > $i/state
+            echo $i
+            cat $i/uevent
         fi
     done
 }
 
+wlan_on() {
+    rfkill_wlan 1
+}
 
 
 no_wol() {
@@ -343,7 +348,7 @@ syslog_nosync() {
 check_intelvga() {
     if [ -n "`lsmod | grep intel_agp`" ]
         then
-        echo "[!] You have intel vga. Try enabling FramebufferCompression:"
+        echo "[!] You have intel vga. Try enabling FramebufferCompression in xorg.conf"
         echo 'Section "Device"'
         echo '  Driver "intel"'
         echo '  Option "FramebufferCompression" "on"'
@@ -352,7 +357,9 @@ check_intelvga() {
     fi
 }
 
+echo "lowpower: agressive powersaving script. comotion@krutt.org 2009-2011"
 args_execed=
+
 for arg in $@
 do
     echo "[*] Sure, I'll try command $arg.."
@@ -363,7 +370,13 @@ if [ -n "$args_execed" ]
     then
     exit 0
 fi
+if [ $UID -ne 0 ]
+    then
+    echo "[!] must run as root"
+    exit 99
+fi
 
+## The measures that are to be taken
 #disable_services
 recheck_cpufreq
 log_to_tmpfs
