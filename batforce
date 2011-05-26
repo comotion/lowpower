@@ -20,7 +20,7 @@
 #set -x
 
 # run on bat0 until it's below %percentage
-BAT0_MIN_CHARGE=5
+BAT0_MIN_CHARGE=6
 # inhibit battery for x minutes to let the other battery charge
 BAT0_INHIBIT_MINUTES=3
 
