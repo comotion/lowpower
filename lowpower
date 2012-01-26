@@ -17,7 +17,7 @@ help() {
 }
 
 disable_services() {
-    SERVICES='varnish varnishlog varnishncsa nagios-nrpe-server gkrellmd icecast exim4 vdr uml-utilities slapd apache2 samba open-iscsi cups avahi-daemon sancp smstools mysql lighttpd autofs'
+    SERVICES='varnish varnishlog varnishncsa nagios-nrpe-server gkrellmd icecast exim4 vdr uml-utilities slapd apache2 samba open-iscsi cups avahi-daemon sancp smstools mysql lighttpd autofs winbind'
 
     echo "[*] stop services"
     for service in $SERVICES
@@ -85,23 +85,24 @@ lowpower_wifi() {
     iwpriv wlan0 set_power 6
 }
 
-kill_bluetoth() {
+kill_bluetooth() {
     usb bluetooth
     hciconfig hci0 down
     rmmod hci_usb
+    echo 0 > /sys/devices/platform/thinkpad_acpi/bluetooth_enable
 }
 
-thinkpad_radiosilence() {
-    echo "[#] go radio silent (bluetooth & 3g)"
-    echo 0 > /sys/devices/platform/thinkpad_acpi/bluetooth_enable
+kill_wwan() {
     echo 0 > /sys/devices/platform/thinkpad_acpi/wwan_enable
 }
-rfkill_all() {
+
+
+kill_all() {
     echo "[?] rfkill"
     for i in `find /sys -name "rf_kill"`; do echo 1 > $i ; done  
 }
 
-rfkill_wlan() {
+kill_wlan() {
     state=$1
     if [ -z $state ]
         then
@@ -120,7 +121,13 @@ rfkill_wlan() {
 }
 
 wlan_on() {
-    rfkill_wlan 1
+    kill_wlan 1
+}
+
+thinkpad_radiosilence() {
+    echo "[#] go radio silent (bluetooth & 3g)"
+    kill_bluetooth
+    kill_wwan
 }
 
 
@@ -379,7 +386,7 @@ fi
 ## The measures that are to be taken
 #disable_services
 recheck_cpufreq
-log_to_tmpfs
+#log_to_tmpfs
 low_brightness
 disable_polling
 powersave_harddisk
