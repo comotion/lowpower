@@ -30,8 +30,8 @@ BAT0_START_CHARGE=50
 BAT0_STOP_CHARGE=95
 
 # bat1 if present is usually smaller
-BAT1_START_CHARGE=88
-BAT1_STOP_CHARGE=95
+BAT1_START_CHARGE=55
+BAT1_STOP_CHARGE=79
 
 # pipe into on-screen-display daemon, if present
 OSD="/tmp/osd.pipe"
